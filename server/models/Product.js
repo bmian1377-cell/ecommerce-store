@@ -66,6 +66,30 @@ const ProductSchema = new mongoose.Schema(
         },
       },
     ],
+
+    // Variants for products with different sizes/colors
+    variants: [
+      {
+        size: {
+          type: String,
+          trim: true
+        },
+        color: {
+          type: String,
+          trim: true
+        },
+        stock: {
+          type: Number,
+          required: [true, 'Please enter variant stock'],
+          default: 0
+        },
+        price: {
+          type: Number,
+          required: [true, 'Please enter variant price'],
+          default: 0
+        }
+      }
+    ],
     stock: {
       type: Number,
       required: [true, 'Please enter product stock'],
@@ -84,19 +108,19 @@ const ProductSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-
-ProductSchema.pre('save', function (next) {
+ProductSchema.pre('save', function(next) {
   if (this.isModified('name')) {
-    this.slug = slugify(this.name, {
-      lower: true,
-      strict: true,
-    });
+    this.slug = slugify(this.name, { lower: true, strict: true });
   }
-  next();
-});
+  if (this.isModified('reviews')) {
+    this.calculateRatings();
+  }
+  next()
+})
 
+  
 // ── Ratings calculate logic 
-ProductSchema.methods.calculateRatings = function () {
+ ProductSchema.methods.calculateRatings = function () {
   if (this.reviews.length === 0) {
     this.ratings = 0;
     this.numReviews = 0;
@@ -108,7 +132,7 @@ ProductSchema.methods.calculateRatings = function () {
     return acc + review.rating;
   }, 0);
 
-  this.ratings = (total / this.reviews.length).toFixed(1);
+  this.ratings = Number((total / this.reviews.length).toFixed(1));
   this.numReviews = this.reviews.length;
 };
 
