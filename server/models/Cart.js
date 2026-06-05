@@ -97,11 +97,11 @@ CartSchema.methods.updateProductPrices = async function () {
 };
 
 
-CartSchema.pre('save', function (next) {
+CartSchema.pre('save', function () {
   if (this.isModified('items')) {
     this.calculateTotals();
   }
-  next();
+ 
 });
 
 module.exports = mongoose.model('Cart', CartSchema);

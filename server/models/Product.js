@@ -108,14 +108,14 @@ const ProductSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-ProductSchema.pre('save', function(next) {
+ProductSchema.pre('save', function() {
   if (this.isModified('name')) {
     this.slug = slugify(this.name, { lower: true, strict: true });
   }
   if (this.isModified('reviews')) {
     this.calculateRatings();
   }
-  next()
+
 })
 
   

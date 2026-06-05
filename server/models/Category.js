@@ -27,7 +27,7 @@ const CategorySchema = new mongoose.Schema(
 );
 
 // slug automatically genrate name from name
-CategorySchema.pre('save', function (next) {
+CategorySchema.pre('save', function () {
   if (this.isModified('name')) {
     this.slug = slugify(this.name, {
       lower: true,
@@ -35,7 +35,6 @@ CategorySchema.pre('save', function (next) {
       replacement: '-',
     });
   }
-  next();
 });
 
 module.exports = mongoose.model('Category', CategorySchema);

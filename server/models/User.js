@@ -46,13 +46,23 @@ const UserSchema = new mongoose.Schema(
 );
 
 //  password hashing before save
-UserSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) return next();
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
-  next();
-});
+UserSchema.pre('save', async function () {
+  try {
+    // 1. Agar password tabdeel nahi hua, toh yahin se return ho jao
+    if (!this.isModified('password')) return;
 
+    // 2. Salt generate karo
+    const salt = await bcrypt.genSalt(10);
+
+    // 3. Password ko hash karke save karo
+    this.password = await bcrypt.hash(this.password, salt);
+
+    // ✅ Koi next() yahan nahi likhna!
+  } catch (error) {
+    console.error("❌ ERROR IN PRE-SAVE HOOK:", error);
+    throw error; // Yeh error ko direct controller ke catch block mein bhej dega
+  }
+});
 // password compare..
 UserSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
