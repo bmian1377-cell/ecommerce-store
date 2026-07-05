@@ -5,7 +5,8 @@ const Product = require('../models/Product');
 // ── Create Order ──────────────────────────────
 async function createOrder(req, res) {
   try {
-    const { shippingAddress, paymentMethod } = req.body;
+    // 💡 orderNote added in destructuring
+    const { shippingAddress, PaymentMethod, orderNote } = req.body;
 
     // 1. Cart lo
     const cart = await Cart.findOne({ user: req.user._id });
@@ -17,7 +18,6 @@ async function createOrder(req, res) {
     }
 
     // 2. Stock check karo — har item ka
-    // DSA: Array forEach — O(n)
     for (let item of cart.items) {
       const product = await Product.findById(item.product);
 
@@ -52,18 +52,18 @@ async function createOrder(req, res) {
       user:            req.user._id,
       orderItems,
       shippingAddress,
-      paymentMethod:   paymentMethod || 'COD',
+      PaymentMethod:   PaymentMethod || 'COD',
+      orderNote:       orderNote || '', // 💡 orderNote passed here to database
     });
 
-    // 5. Total calculate — pre save hook chalega
-    order.calculateTotalPrice();
+    // 1. Totals calculate karo
+    order.calculateTotals();
     await order.save();
 
     // 6. Stock update karo — har product ka
     for (let item of cart.items) {
       await Product.findByIdAndUpdate(item.product, {
         $inc: { stock: -item.quantity }
-        //     ↑ stock kam karo
       });
     }
 
@@ -87,14 +87,13 @@ async function createOrder(req, res) {
 // ── Get My Orders ─────────────────────────────
 async function getMyOrders(req, res) {
   try {
-    // DSA: Pagination
     const page  = Number(req.query.page)  || 1;
     const limit = Number(req.query.limit) || 10;
     const skip  = (page - 1) * limit;
 
     const total  = await Order.countDocuments({ user: req.user._id });
     const orders = await Order.find({ user: req.user._id })
-      .sort('-createdAt')  // latest pehle
+      .sort('-createdAt')
       .skip(skip)
       .limit(limit);
 
@@ -126,7 +125,6 @@ async function getSingleOrder(req, res) {
       });
     }
 
-    // Apna order hai? Admin nahi hai?
     if (
       order.user._id.toString() !== req.user._id.toString() &&
       req.user.role !== 'admin'
@@ -156,8 +154,6 @@ async function getAllOrders(req, res) {
     const limit = Number(req.query.limit) || 10;
     const skip  = (page - 1) * limit;
 
-    // Filter by status:
-    // GET /api/orders/all?status=processing
     const queryObj = {};
     if (req.query.status) {
       queryObj.orderStatus = req.query.status;
@@ -170,7 +166,6 @@ async function getAllOrders(req, res) {
       .skip(skip)
       .limit(limit);
 
-    // DSA: Array reduce — total revenue calculate
     const totalRevenue = orders.reduce((acc, order) => {
       return acc + order.totalPrice;
     }, 0);
@@ -204,7 +199,6 @@ async function updateOrderStatus(req, res) {
       });
     }
 
-    // Delivered order cancel nahi ho sakti
     if (order.orderStatus === 'delivered' && status === 'cancelled') {
       return res.status(400).json({
         success: false,
@@ -212,18 +206,15 @@ async function updateOrderStatus(req, res) {
       });
     }
 
-    // Cancel hone pe stock wapas karo
     if (status === 'cancelled' && order.orderStatus !== 'cancelled') {
       for (let item of order.orderItems) {
         await Product.findByIdAndUpdate(item.product, {
           $inc: { stock: +item.quantity }
-          //     ↑ stock wapas add karo
         });
       }
     }
 
-    // updateStatus method use karo — Order model ka
-    order.updateStatus(status);
+    order.UpdateOrderStatus(status);
     await order.save();
 
     return res.status(200).json({
@@ -251,7 +242,6 @@ async function cancelOrder(req, res) {
       });
     }
 
-    // Apna order hai?
     if (order.user.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
@@ -259,7 +249,6 @@ async function cancelOrder(req, res) {
       });
     }
 
-    // Sirf processing order cancel ho sakti hai
     if (order.orderStatus !== 'processing') {
       return res.status(400).json({
         success: false,
@@ -267,14 +256,13 @@ async function cancelOrder(req, res) {
       });
     }
 
-    // Stock wapas karo
     for (let item of order.orderItems) {
       await Product.findByIdAndUpdate(item.product, {
         $inc: { stock: +item.quantity }
       });
     }
 
-    order.updateStatus('cancelled');
+    order.UpdateOrderStatus('cancelled');
     await order.save();
 
     return res.status(200).json({

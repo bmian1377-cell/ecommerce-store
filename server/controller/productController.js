@@ -1,55 +1,166 @@
 const mongoose = require('mongoose'); 
 const Product = require('../models/Product');
 const Category = require('../models/Category');
+const multer = require('multer');
+const path = require('path');
 
+// ── Multer Storage Configuration (Accepts ALL image types) ───
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/products/'); 
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+// Wildcard content-type checks any incoming image file extension
+const upload = multer({
+  storage: storage,
+  fileFilter: function (req, file, cb) {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image assets are allowed system-wide!'), false);
+    }
+  }
+})
 
 async function createProduct(req, res) {
   try {
     const {
-      name, description, price,
-      discountPrice, category, images,
-      stock, variants
+      name, brand, description, costPrice, price,
+      discountPrice, category, stock, variants, unitType
     } = req.body;
+
+    // Validation
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Product name is required',
+        field: 'name'
+      });
+    }
+
+    if (!price || Number(price) <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Price is required',
+        field: 'price'
+      });
+    }
 
     if (!mongoose.Types.ObjectId.isValid(category)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid Category ID format'
+        message: 'Invalid category',
+        field: 'category'
       });
     }
 
-    
     const categoryExist = await Category.findById(category);
     if (!categoryExist) {
-         
-   
       return res.status(404).json({
         success: false,
-        message: 'Category not found'
+        message: 'Category not found',
+        field: 'category'
       });
     }
 
-    
+    // Process base images
+    let images = [];
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(file => {
+        if (!file.fieldname.startsWith('variant_')) {
+          images.push({ url: `/uploads/products/${file.filename}` });
+        }
+      });
+    }
+
+    // Process variants
+    let processedVariants = [];
+    if (variants) {
+      try {
+        const variantsData = typeof variants === 'string' 
+          ? JSON.parse(variants) 
+          : variants;
+
+        processedVariants = variantsData.map((variant, variantIdx) => {
+          const variantImageKey = `variant_${variantIdx}_image`;
+          const variantImageFile = req.files?.find(f => f.fieldname === variantImageKey);
+
+          return {
+            color: variant.color,
+            image: variantImageFile 
+              ? `/uploads/products/${variantImageFile.filename}` 
+              : null,
+            sizes: variant.sizes.map((size, sizeIdx) => {
+              const sizeImageKey = `variant_${variantIdx}_size_${sizeIdx}_image`;
+              const sizeImageFile = req.files?.find(f => f.fieldname === sizeImageKey);
+
+              return {
+                size: size.size,
+                stock: Number(size.stock),
+                price: Number(size.price),
+                costPrice: Number(size.costPrice) || 0,
+                discountPrice: Number(size.discountPrice) || 0,
+                image: sizeImageFile 
+                  ? `/uploads/products/${sizeImageFile.filename}` 
+                  : null
+              };
+            })
+          };
+        });
+      } catch (err) {
+        console.error('Variant parsing error:', err);
+        processedVariants = [];
+      }
+    }
+
+    // Create product
     const product = await Product.create({
-      name, description, price: Number(price),
-      discountPrice: discountPrice !== undefined ? Number(discountPrice) : undefined, 
-      category, images, stock: Number(stock), variants
+      name: name.trim(),
+      brand: brand?.trim() || '',
+      description: description?.trim() || '',
+      costPrice: costPrice ? Number(costPrice) : 0,
+      price: Number(price),
+      discountPrice: discountPrice ? Number(discountPrice) : 0,
+      category,
+      unitType: unitType || 'unit',
+      stock: Number(stock) || 0,
+      images,
+      variants: processedVariants,
     });
-   
+
     return res.status(201).json({
       success: true,
+      message: 'Product created successfully',
       product
     });
+
   } catch (error) {
-  
+    console.error('Create Product Error:', error);
+
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: Object.keys(error.errors).reduce((acc, key) => {
+          acc[key] = error.errors[key].message;
+          return acc;
+        }, {})
+      });
+    }
+
     return res.status(500).json({
       success: false,
       message: 'Server Error',
       error: error.message
     });
   }
-}
 
+}
 // ── Get All Products — Filters + Pagination ───
 async function getAllProducts(req, res) {
   try {
@@ -198,9 +309,8 @@ async function updateProduct(req, res) {
     }
 
     const {
-      name, description, price,
-      discountPrice, category,
-      images, stock, variants
+      name, brand, description, costPrice, price,
+      discountPrice, category, stock, variants
     } = req.body;
 
     // ⚡ Fixed: Safe Category Update & Existence Check
@@ -215,15 +325,23 @@ async function updateProduct(req, res) {
       product.category = category;
     }
 
-    if (name)        product.name        = name;
-    if (description) product.description = description;
-    if (price)       product.price       = Number(price);
+    // New image fields logic for edit flow
+    if (req.files && req.files.length > 0) {
+      const newImages = req.files.map(file => ({
+        url: `/uploads/products/${file.filename}`
+      }));
+      product.images = newImages; 
+    }
+
+    if (name)                 product.name          = name;
+    if (brand !== undefined)  product.brand         = brand;
+    if (description)          product.description   = description;
+    if (costPrice !== undefined) product.costPrice  = Number(costPrice);
+    if (price)                product.price         = Number(price);
     
-    // better to check for undefined specifically, taake falsy values (like 0) update ho sakein
     if (discountPrice !== undefined) product.discountPrice = Number(discountPrice);
-    if (images)      product.images      = images;
-    if (stock !== undefined)         product.stock         = Number(stock);
-    if (variants)    product.variants    = variants;
+    if (stock !== undefined)  product.stock         = Number(stock);
+    if (variants)             product.variants      = typeof variants === 'string' ? JSON.parse(variants) : variants;
 
     await product.save(); 
 
@@ -291,13 +409,12 @@ async function addReview(req, res) {
       });
     }
 
-    // check if user already reviewed this product
     const alreadyReviewed = product.reviews.find(
       review => review.user?.toString() === req.user._id.toString()
     );
 
     if (alreadyReviewed) {
-      product.reviews.forEach(review => {  // ⚡ Fixed: Safe string check for update
+      product.reviews.forEach(review => {  
         if (review.user?.toString() === req.user._id.toString()) {
           review.rating  = Number(rating);
           review.comment = comment;
@@ -312,7 +429,6 @@ async function addReview(req, res) {
       });
     }
 
-  
     await product.save();
 
     return res.status(200).json({
@@ -347,7 +463,6 @@ async function deleteReview(req, res) {
       });
     }
 
-    // ⚡ Fixed: Safe string check for filter
     product.reviews = product.reviews.filter(
       review => review.user?.toString() !== req.user._id.toString()
     );
@@ -375,5 +490,6 @@ module.exports = {
   deleteProduct,
   addReview,
   deleteReview,
-  getproductBySlug
+  getproductBySlug,
+  upload 
 };

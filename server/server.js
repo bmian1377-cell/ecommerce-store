@@ -2,14 +2,21 @@ const express = require('express')
 const dotenv = require('dotenv')
 const cors = require('cors')
 const ConnectDB = require('./config/db')
+const path = require('path') 
 
 dotenv.config();
 ConnectDB();
 
 const app = express()
 
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true,
+}));
 app.use(express.json());
+
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 const authRoutes = require('./routes/AuthRotes');
 app.use('/api/auth', authRoutes);

@@ -9,19 +9,21 @@ const {
   addReview,
   deleteReview,
   getproductBySlug,
+  upload
 } = require('../controller/productController');
 const { protect, adminOnly } = require('../middleware/AuthMiddleware');
 
 // Public Routes 
 router.get('/',    getAllProducts);//ok
-router.get('/:slug', getproductBySlug);//ok
-
 
 // ── Admin Only ────────────────────────────────
-router.post  ('/',    protect, adminOnly, createProduct); //ok
-router.put   ('/:id', protect, adminOnly, updateProduct);//ok
+router.post  ('/',    protect, adminOnly,  upload.any(), createProduct); //ok
+router.put   ('/:id', protect, adminOnly, upload.array('images'), updateProduct);//ok
 router.delete('/:id', protect, adminOnly, deleteProduct);//ok
-router.get('/:id', protect, adminOnly, getSingleProduct);//ok
+router.get('/:id', protect,  getSingleProduct);//ok
+
+// Public Routes 
+router.get('/:slug', getproductBySlug);//ok
 
 //  Protected must be logged in to review
 router.post  ('/:id/reviews', protect, addReview);

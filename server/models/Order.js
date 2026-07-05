@@ -120,29 +120,25 @@ const OrderSchema = new mongoose.Schema({
         type: Date,
         default: null,
     },
+    // 💡 Order Note field added strictly here
+    orderNote: {
+        type: String,
+        trim: true,
+        default: '',
+    },
 }, { timestamps: true });
-
-
-
-// 1. Totals calculate karo
-// 2. Shipping price add on minmum under 1000 shopping / otherwise free shipping
-// 3. Check order status and update deliveredAt or cancelledAt accordingly
-// 4. Pre save hook to calculate totals before saving order
-           
-
 
 OrderSchema.methods.calculateTotals = function () {
     this.itemsPrice = this.orderItems.reduce((acc,items)=> {
         return acc + items.price * items.quantity;
     }, 0);
     
-this.shippingPrice = this.itemsPrice > 1000 ? 0 : 200;
-this.totalPrice = this.itemsPrice + this.shippingPrice;
+    this.shippingPrice = this.itemsPrice > 1000 ? 0 : 200;
+    this.totalPrice = this.itemsPrice + this.shippingPrice;
 }
 
-
 OrderSchema.methods.UpdateOrderStatus = function (newStatus) {
-this.orderStatus = newStatus;
+    this.orderStatus = newStatus;
 
     if (newStatus === 'Delivered') {
         this.deliveredAt = Date.now();
@@ -154,12 +150,10 @@ this.orderStatus = newStatus;
     }
 }
 
-
-OrderSchema.pre('save', function (next) {
+OrderSchema.pre('save', function () {
     if (this.isModified('orderItems')) {
         this.calculateTotals();
     }   
-    next();
 });
 
-module.exports = mongoose.model('Order', OrderSchema);  
+module.exports = mongoose.model('Order', OrderSchema);

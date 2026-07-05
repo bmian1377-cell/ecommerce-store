@@ -9,18 +9,14 @@ async function addToCart(req, res) {
     try {
         const { productId, quantity, color, size } = req.body;
         
-        
         const product = await Product.findById(productId);
         if (!product) {
             return res.status(404).json({ success: false, message: 'Product not found' });
         }
         
-       
         if (product.stock < 1) {
             return res.status(400).json({ success: false, message: 'Product is out of stock' });
         }
-
-
 
         // set default quantity to 1 if not provided
         const requestedQty = quantity || 1;        
@@ -40,7 +36,7 @@ async function addToCart(req, res) {
                 items: [{
                     product: productId,
                     name: product.name,
-                    image: product.images[0] || '',
+                    image: product.images[0] || '', // primary image path saved
                     color: color || null,
                     size: size || null,
                     quantity: requestedQty,
@@ -61,18 +57,15 @@ async function addToCart(req, res) {
 
         if (itemindex > -1) {
             // [NEW LOGIC - BUG FIX]: Direct '+=' karne se RAM mein data kharab hota tha agar check fail ho jaye.
-            // Pehle safe variable mein total check kiya.
             const newQuantity = cart.items[itemindex].quantity + requestedQty;
             
             if (newQuantity > product.stock) {
                 return res.status(400).json({ success: false, message: `Only ${product.stock} items in stock` });
             }
             cart.items[itemindex].quantity = newQuantity;
-        }
-        
-        else 
-            {
-           // new item added, or push
+        } 
+        else {
+            // new item added, or push
             cart.items.push({
                 product: productId,
                 name: product.name,
@@ -84,7 +77,7 @@ async function addToCart(req, res) {
                 currentProductPrice: currentPrice,
             });
         }
-         //Bill caluclate on model (creating pre save hook in Cart model)
+        // Bill caluclate on model (creating pre save hook in Cart model)
         await cart.save();
         return res.status(200).json({ success: true, message: 'Item added to cart', cart });
 
@@ -99,16 +92,16 @@ async function getCart(req, res) {
         let cart = await Cart.findOne({ user: req.user._id })
             .populate('items.product', 'name price discountPrice images stock');
             
-       //..using good respone structure even when cart is empty, taake frontend pe handle karna easy ho jaye.
+        // ..using good respone structure even when cart is empty, taake frontend pe handle karna easy ho jaye.
         if (!cart) {
             return res.status(200).json({
                 success: true,
                 message: 'Cart is empty',
-                cart: { items: [], totalprice: 0, totalQuantity: 0 }
+                cart: { items: [], totalPrice: 0, totalQuantity: 0 } // Fixed camelCase matching frontend slice
             });
         }
 
-      //safety check for updatedProductPrices method existence before calling it
+        // safety check for updatedProductPrices method existence before calling it
         if (Cart.updateProductPrices && typeof Cart.updateProductPrices === 'function') {
             await Cart.updateProductPrices();
         }
@@ -127,7 +120,6 @@ async function updateCart(req, res) {
         const { quantity, color, size } = req.body;
         const { itemId } = req.params; 
         
-       
         if (!quantity && !color && !size) {
             return res.status(400).json({ success: false, message: 'Please provide quantity, color or size to update' });
         }
@@ -143,7 +135,6 @@ async function updateCart(req, res) {
             return res.status(404).json({ success: false, message: 'Item not found in cart' });
         }
 
-        
         if (quantity !== undefined) {
             if (quantity < 1) {
                 return res.status(400).json({ success: false, message: 'Quantity must be at least 1' });
@@ -157,7 +148,6 @@ async function updateCart(req, res) {
             cart.items[itemIndex].quantity = quantity;
         }
         
-       
         if (color !== undefined) cart.items[itemIndex].color = color;
         if (size !== undefined) cart.items[itemIndex].size = size;
 
@@ -177,7 +167,7 @@ async function clearCart(req, res) {
             return res.status(404).json({ success: false, message: 'Cart not found' });
         }
         
-        //remove all items
+        // remove all items
         cart.items = [];
         
         await cart.save();
@@ -196,12 +186,11 @@ async function removeFromCart(req, res) {
             return res.status(404).json({ success: false, message: 'Cart not found' });
         }
         
-     // safety check for item existence before filtering,
-     // create new array with filter and compare lengths to determine if item was found and removed
+        // safety check for item existence before filtering,
+        // create new array with filter and compare lengths to determine if item was found and removed
         const beforeFilterLength = cart.items.length;
         cart.items = cart.items.filter(item => item._id.toString() !== itemId);
 
-      
         if (cart.items.length === beforeFilterLength) {
             return res.status(404).json({ success: false, message: 'Item not found in cart' });
         }
@@ -213,7 +202,6 @@ async function removeFromCart(req, res) {
         return res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 }
-
 
 module.exports = {
     addToCart,
